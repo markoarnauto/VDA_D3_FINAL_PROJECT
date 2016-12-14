@@ -1,0 +1,111 @@
+---
+title: "High Frequency Trading Data - High Fidelity Milestone"
+author: "Viktor Ludwig, Markus Tretzmüller, Michael Trimmel"
+date: "29 11 2016"
+output: html_document
+---
+
+## Create main view with all data
+
+```{r, echo=FALSE, message=FALSE}
+library(orderbook)
+library(Rserve)
+rm(list = ls())
+#Rserve()
+
+
+actualPath <- getwd()
+pathToData <- paste(actualPath, "/Desktop/Visualisation/", sep = "")
+
+messageFile <- "AAPL_2012-06-21_34200000_57600000_message_5.csv"
+orderbookFile <- "AAPL_2012-06-21_34200000_57600000_orderbook_5.csv"
+
+
+
+
+######### load  data ########################
+# load  order  book  data
+dataOB<-read.csv( paste(pathToData, orderbookFile, sep = ""))
+# load  message  data
+dataM <- read.csv( paste(pathToData, messageFile, sep = ""))
+# merge two  datasets
+data <- cbind(dataM , dataOB[ ,-1])
+####### load  completed ###################
+
+id <- 1:nrow(data)
+
+data <- cbind(id, data)
+
+nlevels <- (dim(dataOB)[2] - 1) / 4
+colnms <- c("Id", "Time", "Type", "OrderID", "Size", "Price", "TradeDirection")
+
+for(i in 1:nlevels)
+{
+    colnms <- c(colnms, paste("ASKp", i, sep = ""), paste("ASKv", i, sep = ""), paste("BIDp", i, sep = ""), paste("BIDv", i, sep = ""))
+    
+}
+colnames(data) <- colnms
+
+data[1:5,]
+#plot(data[,'Time'], data[,'Price'], type = "l", lwd=1, ylab = "price", xlab = "time")
+```
+
+
+
+## Create subset with filtering one minute
+
+```{r, echo=FALSE, message=FALSE}
+library(quantmod)
+library(xts)
+library(forecast)
+library(lubridate)
+library(obAnalytics)
+library(zoo)
+library(highfrequency)
+library(orderbook)
+
+#actualPath <- getwd()
+#pathToData <- paste(actualPath, "/Desktop/Visualisation/", sep = "")
+####yahoo test data fb
+#data <- read.csv( paste(pathToData, 'table.csv', sep = ""))
+
+
+actualDate <- Sys.Date()
+
+minTime <- data[1,1]
+maxTime <- data[nrow(data),1]
+
+data <- data[1:100, ]
+data
+```
+
+
+
+```{r, echo = FALSE, message=FALSE}
+options(digits.secs = 9)
+t1 <- as.POSIXct(data[,'Time'], origin = actualDate)
+t1
+#data[,'Time'] <- t1
+
+ts_data <- xts(data, order.by=as.POSIXct(data[,'Time'] , origin=actualDate))
+ts_data
+head(ts_data)
+
+ts_dataCleaned <- tradesCleanup(tdataraw = ts_data, exchanges = "N")
+ts_dataCleaned
+
+#plot(data[,'Time'], data[,'Price'], type="l")
+display(ts_data)
+plot(data)
+
+#### quantmod package Fehler in if (on == "years") { : Fehlender Wert, wo TRUE/FALSE nötig ist}
+#ts_data <- xts(data[, -1], order.by=as.POSIXct(data$Date))
+#aud.xts <- as.xts(zoo(data[,2:6],order.by=as.POSIXct(data$Time, origin=actualDate)))
+#chartSeries(aud.xts)
+
+
+aggStocks <- aggregatePrice(ts_data$Price, on="min", k=1)
+
+
+```
+
