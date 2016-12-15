@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="ec2ce525-a4bd-40af-9a05-75f2c51a671f" name="UNI_MYSERVER" url="http://homepage.univie.ac.at">
+        <fileTransfer host="login.univie.ac.at" port="22" rootFolder="/home/user05/markust92" accessType="SFTP" password="dfd8dfcbdfdadfc3dfcedfdddfc3dfcfdfc4df8b" username="markust92">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>
