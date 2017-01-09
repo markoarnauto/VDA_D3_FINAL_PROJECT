@@ -4,8 +4,13 @@
     <meta charset="utf-8">
     <style>
 
-        .area {
+        .areaPrice, .areaFilter {
             fill: steelblue;
+            clip-path: url(#clip);
+        }
+
+        .areaVolume {
+            fill: red;
             clip-path: url(#clip);
         }
 
@@ -20,67 +25,109 @@
     <script type="text/javascript" src="d3.min.js"></script>
 </head>
 <body>
-<svg width="960" height="500"></svg>
+<svg id="main" width="960" height="500"></svg>
+<svg id="aside" width="250" height="500"></svg>
 <script type="text/javascript">
 
-    var svg = d3.select("svg"),
-            margin = {top: 20, right: 20, bottom: 110, left: 40},
-            margin2 = {top: 430, right: 20, bottom: 30, left: 40},
-            width = +svg.attr("width") - margin.left - margin.right,
-            height = +svg.attr("height") - margin.top - margin.bottom,
-            height2 = +svg.attr("height") - margin2.top - margin2.bottom;
+    var svgAside = d3.select("#aside"),
+            marginAside = {top: 20, right: 20, bottom: 30, left: 40},
+            heightAside = +svgAside.attr("height") - marginAside.top - marginAside.bottom,
+            widthAside = +svgAside.attr("width") - marginAside.left - marginAside.right,
+            gAside = svgAside.append("g").attr("transform", "translate(" + marginAside.left + "," + marginAside.right + ")");
 
-    var parseDate = d3.timeParse("%L");
+    var xAside0 = d3.scaleBand()
+            .rangeRound([0, widthAside])
+            .paddingInner(0.1);
 
-    var x = d3.scaleTime().range([0, width]),
-            x2 = d3.scaleTime().range([0, width]),
-            y = d3.scaleLinear().range([height, 0]),
-            y2 = d3.scaleLinear().range([height2, 0]);
+    var xAside1 = d3.scaleBand()
+            .padding(0.05);
 
-    var xAxis = d3.axisBottom(x),
-            xAxis2 = d3.axisBottom(x2),
-            yAxis = d3.axisLeft(y);
+    var yAside = d3.scaleLinear()
+            .rangeRound([heightAside, 0]);
+
+    var zAside = d3.scaleOrdinal()
+            .range(["#98abc5", "#8a89a6"]);
+
+    var svgMain = d3.select("#main"),
+            marginPrice = {top: 20, right: 20, bottom: 110, left: 40},
+            marginFilter = {top: 430, right: 20, bottom: 30, left: 40},
+            width = +svgMain.attr("width") - marginPrice.left - marginPrice.right,
+            heightPrice = +svgMain.attr("height") - marginPrice.top - marginPrice.bottom,
+            heightFilter = +svgMain.attr("height") - marginFilter.top - marginFilter.bottom;
+
+    var parseDate = d3.timeParse("%H:%M:%S:%L");
+    var customTimeFormat = d3.timeFormat("%L");
+    // data holders
+    var messageBook, orderBookParsed, exec, types;
+/*
+    1: Submission of a new limit order
+    2: Cancellation (partial deletion of a limit order)
+    3: Deletion (total deletion of a limit order)
+    4: Execution of a visible limit order
+    5: Execution of a hidden limit order
+    7: Trading halt indicator
+    */
+    var messageType = ["","submission","cancellation","deletion","execution","execution",""];
+
+    var formatTime = d3.timeFormat("%H:%M:%S:%L"),
+            formatMinutes = function(d) { return formatTime(new Date(2016, 0, 1, 0, 0, 0, d)); };
+
+    var xMain = d3.scaleTime().range([0, width]),
+            xFilter = d3.scaleTime().range([0, width]),
+            yPrice = d3.scaleLinear().range([heightPrice, 0]),
+            yVolume = d3.scaleLinear().range([heightPrice, 0]),
+            yFilter = d3.scaleLinear().range([heightFilter, 0]);
+
+    var xAxis = d3.axisBottom(xMain),
+            xAxisFilter = d3.axisBottom(xFilter),
+            yAxis = d3.axisLeft(yPrice);
 
     var brush = d3.brushX()
-            .extent([[0, 0], [width, height2]])
+            .extent([[0, 0], [width, heightFilter]])
             .on("brush end", brushed);
 
     var zoom = d3.zoom()
             .scaleExtent([1, Infinity])
-            .translateExtent([[0, 0], [width, height]])
-            .extent([[0, 0], [width, height]])
+            .translateExtent([[0, 0], [width, heightPrice]])
+            .extent([[0, 0], [width, heightPrice]])
             .on("zoom", zoomed);
 
-    var area = d3.area()
+    var areaPrice = d3.area()
             .curve(d3.curveMonotoneX)
-            .x(function(d) { return x(d.date); })
-            .y0(height)
-            .y1(function(d) { return y(d.price); });
+            .x(function(d) { return xMain(d.date); })
+            .y0(heightPrice)
+            .y1(function(d) { return yPrice(d.price); });
 
-    var area2 = d3.area()
+    var areaVolume = d3.area()
             .curve(d3.curveMonotoneX)
-            .x(function(d) { return x2(d.date); })
-            .y0(height2)
-            .y1(function(d) { return y2(d.price); });
+            .x(function(d) { return xMain(d.date) })
+            .y0(heightPrice)
+            .y1(function(d) { return yVolume(d.bidVolume) })
 
-    svg.append("defs").append("clipPath")
+    var areaFilter = d3.area()
+            .curve(d3.curveMonotoneX)
+            .x(function(d) { return xFilter(d.date); })
+            .y0(heightFilter)
+            .y1(function(d) { return yFilter(d.price); });
+
+    svgMain.append("defs").append("clipPath")
             .attr("id", "clip")
             .append("rect")
             .attr("width", width)
-            .attr("height", height);
+            .attr("height", heightPrice);
 
-    var focus = svg.append("g")
+    var focus = svgMain.append("g")
             .attr("class", "focus")
-            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+            .attr("transform", "translate(" + marginPrice.left + "," + marginPrice.top + ")");
 
-    var context = svg.append("g")
+    var context = svgMain.append("g")
             .attr("class", "context")
-            .attr("transform", "translate(" + margin2.left + "," + margin2.top + ")");
+            .attr("transform", "translate(" + marginFilter.left + "," + marginFilter.top + ")");
 
     d3.text("data/test_messages.csv", function(text) {
-        var messageBook = d3.csvParseRows(text, function (d, i) {
+        messageBook = d3.csvParseRows(text, function (d, i) {
             return {
-                time: +d[0], // date Conversion? Seconds after midnight with decimal precision of at least milliseconds and up to nanoseconds depending on the period requested
+                date: parseDate(formatMinutes(d[0]*1000)), // date Conversion? Seconds after midnight with decimal precision of at least milliseconds and up to nanoseconds depending on the period requested
                 /**
                  Event Type:
                  1: Submission of a new limit order
@@ -104,74 +151,169 @@
         });
 
         // filter executions for depicting price change
-        var data = d3.csvParseRows(text, function (d, i) {
-            if(d[1] == "4" || d[1] == "5") {
-                return {
-                    date: +d[0],
-                    type: d[1],
-                    id: d[2],
-                    size: +d[3],
-                    price: d[4]/10000,
-                    direction: d[5]
-                };
+        exec = [];
+        for (var i = 0; i < messageBook.length; i++) {
+            if (messageType[messageBook[i].type] == "execution") exec.push(messageBook[i]);
+        }
+
+        // filter executions for depicting type charts
+        types = [];
+
+        for (var i = 0; i < messageBook.length; i++) {
+            var msgType = messageType[messageBook[i].type];
+            if (types[msgType] === undefined) {
+                types[msgType] = {};
+                types[msgType].overall = 0;
+                types[msgType].selection = 500;
             }
-        });
+            types[msgType].overall += 1;
+        }
 
-        x.domain(d3.extent(data, function(d) { return d.date; }));
-        y.domain([d3.min(data, function(d) { return d.price; }), d3.max(data, function(d) { return d.price; })]);
-        x2.domain(x.domain());
-        y2.domain(y.domain());
+        var states = Object.keys(types);
+        var keys = ["overall", "selection"];
 
-        focus.append("path")
-                .datum(data)
-                .attr("class", "area")
-                .attr("d", area);
+        xAside0.domain(states);
+        xAside1.domain(keys).rangeRound([0, xAside0.bandwidth()]);
+        yAside.domain([0, d3.max(d3.values(types), function(d) { return d3.max(keys, function(key) { return d[key]; }); })]).nice();
 
-        focus.append("g")
-                .attr("class", "axis axis--x")
-                .attr("transform", "translate(0," + height + ")")
-                .call(xAxis);
-
-        focus.append("g")
-                .attr("class", "axis axis--y")
-                .call(yAxis);
-
-        context.append("path")
-                .datum(data)
-                .attr("class", "area")
-                .attr("d", area2);
-
-        context.append("g")
-                .attr("class", "axis axis--x")
-                .attr("transform", "translate(0," + height2 + ")")
-                .call(xAxis2);
-
-        context.append("g")
-                .attr("class", "brush")
-                .call(brush)
-                .call(brush.move, x.range());
-
-        svg.append("rect")
-                .attr("class", "zoom")
-                .attr("width", width)
-                .attr("height", height)
-                .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
-                .call(zoom);
+        gAside.append("g")
+                .selectAll("g")
+                .data(d3.entries(types))
+                .enter().append("g")
+                .attr("transform", function(d) {
+                    return "translate(" + xAside0(d.key) + ",0)"
+                })
+                .selectAll("rect")
+                .data(function(d) {return keys.map(function(key) {
+                    return {key: key, value: d.value[key]}
+                })})
+                .enter().append("rect")
+                .attr("x", function(d) { return xAside1(d.key); })
+                .attr("y", function(d) { return yAside(d.value); })
+                .attr("width", xAside1.bandwidth())
+                .attr("height", function(d) { return heightAside - yAside(d.value); })
+                .attr("fill", function(d) { return zAside(d.key); });
 
 
-        console.log(messageBook);
-        console.log(data);
+        gAside.append("g")
+                .attr("class", "axis")
+                .attr("transform", "translate(0," + heightAside + ")")
+                .call(d3.axisBottom(xAside0));
 
+        gAside.append("g")
+                .attr("class", "axis")
+                .call(d3.axisLeft(yAside).ticks(null, "s"))
+                .append("text")
+                .attr("x", 2)
+                .attr("y", yAside(yAside.ticks().pop()) + 0.5)
+                .attr("dy", "0.32em")
+                .attr("fill", "#000");
+
+        var legend = gAside.append("g")
+                .attr("font-family", "sans-serif")
+                .attr("font-size", 10)
+                .attr("text-anchor", "end")
+                .selectAll("g")
+                .data(keys.slice().reverse())
+                .enter().append("g")
+                .attr("transform", function(d, i) { return "translate(0," + i * 20 + ")"; });
+
+        legend.append("rect")
+                .attr("x", widthAside - 19)
+                .attr("width", 19)
+                .attr("height", 19)
+                .attr("fill", zAside);
+
+        legend.append("text")
+                .attr("x", widthAside - 24)
+                .attr("y", 9.5)
+                .attr("dy", "0.32em")
+                .text(function(d) { return d; });
+
+
+
+        d3.text("data/test_orderbook.csv", function(text) {
+            orderBookParsed = d3.csvParseRows(text, function (d, i) {
+                var row = {
+                    date: messageBook[i].date,
+                    depth: d.length / 4,
+                    insideAsk: d[0],
+                    askVolume: 0,
+                    insideBid: d[2],
+                    bidVolume: 0
+                };
+                for (var j = 0; j < d.length; j+=4) { // ask
+                    row.askVolume += d[j] * d[j+1];
+                }
+                for (var j = 2; j < d.length; j+=4) { // bid
+                    row.bidVolume += d[j] * d[j+1];
+                }
+
+                return row;
+            });
+
+
+            xMain.domain(d3.extent(exec, function(d) { return d.date; }));
+            yVolume.domain([d3.min(orderBookParsed, function(d) { return d.bidVolume; }), d3.max(orderBookParsed, function(d) { return d.bidVolume; })]);
+            yPrice.domain([d3.min(exec, function(d) { return d.price; }), d3.max(exec, function(d) { return d.price; })]);
+            xFilter.domain(xMain.domain());
+            yFilter.domain(yPrice.domain());
+
+            focus.append("path")
+                    .datum(exec)
+                    .attr("class", "areaPrice")
+                    .attr("d", areaPrice);
+
+            focus.append("path")
+                    .datum(orderBookParsed)
+                    .attr("class", "areaVolume")
+                    .attr("d", areaVolume);
+
+            focus.append("g")
+                    .attr("class", "axis axis--x")
+                    .attr("transform", "translate(0," + heightPrice + ")")
+                    .call(xAxis);
+
+            focus.append("g")
+                    .attr("class", "axis axis--y")
+                    .call(yAxis);
+
+            context.append("path")
+                    .datum(exec)
+                    .attr("class", "areaFilter")
+                    .attr("d", areaFilter);
+
+            context.append("g")
+                    .attr("class", "axis axis--x")
+                    .attr("transform", "translate(0," + heightFilter + ")")
+                    .call(xAxisFilter);
+
+            context.append("g")
+                    .attr("class", "brush")
+                    .call(brush)
+                    .call(brush.move, xMain.range());
+
+            svgMain.append("rect")
+                    .attr("class", "zoom")
+                    .attr("width", width)
+                    .attr("height", heightPrice)
+                    .attr("transform", "translate(" + marginPrice.left + "," + marginPrice.top + ")")
+                    .call(zoom);
+
+
+
+        })
 
     })
 
     function brushed() {
         if (d3.event.sourceEvent && d3.event.sourceEvent.type === "zoom") return; // ignore brush-by-zoom
-        var s = d3.event.selection || x2.range();
-        x.domain(s.map(x2.invert, x2));
-        focus.select(".area").attr("d", area);
+        var s = d3.event.selection || xFilter.range();
+        xMain.domain(s.map(xFilter.invert, xFilter));
+        focus.select(".areaVolume").attr("d", areaVolume);
+        focus.select(".areaPrice").attr("d", areaPrice);
         focus.select(".axis--x").call(xAxis);
-        svg.select(".zoom").call(zoom.transform, d3.zoomIdentity
+        svgMain.select(".zoom").call(zoom.transform, d3.zoomIdentity
                 .scale(width / (s[1] - s[0]))
                 .translate(-s[0], 0));
     }
@@ -179,18 +321,12 @@
     function zoomed() {
         if (d3.event.sourceEvent && d3.event.sourceEvent.type === "brush") return; // ignore zoom-by-brush
         var t = d3.event.transform;
-        x.domain(t.rescaleX(x2).domain());
-        focus.select(".area").attr("d", area);
+        xMain.domain(t.rescaleX(xFilter).domain());
+        focus.select(".areaVolume").attr("d", areaVolume);
+        focus.select(".areaPrice").attr("d", areaPrice);
         focus.select(".axis--x").call(xAxis);
-        context.select(".brush").call(brush.move, x.range().map(t.invertX, t));
+        context.select(".brush").call(brush.move, xMain.range().map(t.invertX, t));
     }
-
-    function type(d) {
-        d.date = parseDate(d.date);
-        d.price = +d.price;
-        return d;
-    }
-
 
 </script>
 </body>
