@@ -5,7 +5,7 @@
       <paths name="UNI_MYSERVER">
         <serverdata>
           <mappings>
-            <mapping deploy="/fileserver/html" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/fileserver/html/Final_Project_Web" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

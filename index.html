@@ -58,15 +58,17 @@
     var parseDate = d3.timeParse("%H:%M:%S:%L");
     var customTimeFormat = d3.timeFormat("%L");
     // data holders
-    var messageBook, orderBookParsed, exec, types;
-/*
-    1: Submission of a new limit order
-    2: Cancellation (partial deletion of a limit order)
-    3: Deletion (total deletion of a limit order)
-    4: Execution of a visible limit order
-    5: Execution of a hidden limit order
-    7: Trading halt indicator
-    */
+    var messageBook, orderBookParsed, exec, types, interpolator;
+    var keys = ["overall", "selection"];
+
+    /*
+        1: Submission of a new limit order
+        2: Cancellation (partial deletion of a limit order)
+        3: Deletion (total deletion of a limit order)
+        4: Execution of a visible limit order
+        5: Execution of a hidden limit order
+        7: Trading halt indicator
+        */
     var messageType = ["","submission","cancellation","deletion","execution","execution",""];
 
     var formatTime = d3.timeFormat("%H:%M:%S:%L"),
@@ -150,6 +152,9 @@
             };
         });
 
+        interpolator = messageBook.length / width;
+
+
         // filter executions for depicting price change
         exec = [];
         for (var i = 0; i < messageBook.length; i++) {
@@ -164,13 +169,13 @@
             if (types[msgType] === undefined) {
                 types[msgType] = {};
                 types[msgType].overall = 0;
-                types[msgType].selection = 500;
+                types[msgType].selection = 0;
             }
             types[msgType].overall += 1;
+            types[msgType].selection += 1;
         }
 
         var states = Object.keys(types);
-        var keys = ["overall", "selection"];
 
         xAside0.domain(states);
         xAside1.domain(keys).rangeRound([0, xAside0.bandwidth()]);
@@ -178,8 +183,10 @@
 
         gAside.append("g")
                 .selectAll("g")
+                .attr("class", "chart-root")
                 .data(d3.entries(types))
                 .enter().append("g")
+                .attr("class", "chart-group")
                 .attr("transform", function(d) {
                     return "translate(" + xAside0(d.key) + ",0)"
                 })
@@ -188,6 +195,9 @@
                     return {key: key, value: d.value[key]}
                 })})
                 .enter().append("rect")
+                .attr("class", function(d) {
+                    return d.key + "-chart";
+                })
                 .attr("x", function(d) { return xAside1(d.key); })
                 .attr("y", function(d) { return yAside(d.value); })
                 .attr("width", xAside1.bandwidth())
@@ -306,9 +316,41 @@
 
     })
 
+    function resetSelectionTypes() {
+        for (var key in types) {
+            types[key].selection = 0;
+        }
+    }
+
+    function updateAside(selection) {
+        if (selection !== undefined) {
+            var interpolatedSelection = [];
+            interpolatedSelection[0] = Math.floor(selection[0] * interpolator);
+            interpolatedSelection[1] = Math.floor(selection[1] * interpolator);
+            resetSelectionTypes();
+            for (var i = interpolatedSelection[0]; i < interpolatedSelection[1]; i++) {
+                var msgType = messageType[messageBook[i].type]
+                types[msgType].selection += 1;
+            }
+            gAside.selectAll(".chart-group")
+                    .data(d3.entries(types))
+                    .selectAll("rect")
+                    .data(function(d) {return keys.map(function(key) {
+                        return {key: key, value: d.value[key]}
+                    })})
+                    .attr("y", function(d) {
+                        return yAside(d.value);
+                    })
+                    .attr("height", function(d) {
+                        return heightAside - yAside(d.value);
+                    });
+        }
+    }
+
     function brushed() {
         if (d3.event.sourceEvent && d3.event.sourceEvent.type === "zoom") return; // ignore brush-by-zoom
         var s = d3.event.selection || xFilter.range();
+        updateAside(d3.event.selection);
         xMain.domain(s.map(xFilter.invert, xFilter));
         focus.select(".areaVolume").attr("d", areaVolume);
         focus.select(".areaPrice").attr("d", areaPrice);
@@ -321,6 +363,7 @@
     function zoomed() {
         if (d3.event.sourceEvent && d3.event.sourceEvent.type === "brush") return; // ignore zoom-by-brush
         var t = d3.event.transform;
+        updateAside(xMain.range().map(t.invertX, t));
         xMain.domain(t.rescaleX(xFilter).domain());
         focus.select(".areaVolume").attr("d", areaVolume);
         focus.select(".areaPrice").attr("d", areaPrice);
